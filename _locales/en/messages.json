@@ -1,0 +1,26 @@
+{
+   "appDesc": {
+      "message": "Extension prevents duplicate of websites by focusing on already opened tabs."
+   },
+   "option_header_matching": {
+      "message": "URL matching"
+   },
+   "option_header_tab": {
+      "message": "Tab"
+   },
+   "option_option_ignore_hash": {
+      "message": "Ignore hash in url"
+   },
+   "option_option_move_tab": {
+      "message": "Move matching tab to automatically closed tab position"
+   },
+   "option_option_replace_hash": {
+      "message": "Replace hash with new one if matched"
+   },
+   "popup_donate": {
+      "message": "Love extension? Consider donating!"
+   },
+   "popup_options": {
+      "message": "Settings"
+   }
+}

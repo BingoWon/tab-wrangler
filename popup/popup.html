@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Fast unique tab</title>
+
+	<link rel="stylesheet" type="text/css" href="popup.css">
+</head>
+<body>
+	<form>
+		<h3 id="header-url-matching">URL matching</h3>
+		<section>
+		  	<input type="checkbox" id="option_ignore_hash" name="ignore_hash" value="1"/>
+		  	<label for="option_ignore_hash">Ignore hash in url</label>
+
+			<section class="child-section">
+			  	<input type="checkbox" id="option_replace_hash" name="replace_hash_for_old_tab" value="1"/>
+			  	<label for="option_replace_hash">Replace hash with new one if matched</label>
+			</section>
+		</section>
+
+		<h3 id="header-tab">Tab</h3>
+		<section>
+		  	<input type="checkbox" id="option_move_tab" name="move_tab" value="0"/>
+		  	<label for="option_move_tab">Move tab to new position</label>
+		</section>
+	</form>
+
+	<script type="text/javascript" src="popup.js"></script>
+</body>
+</html>
