@@ -20,9 +20,10 @@ var App = {
 	},
 
 	updateOrCloseTab: function (tabId, changeInfo, tab) {
+		// console.log("tab:", tab);
 		// Bin: Sometimes the tab is already closed.
 		if (this.tabs[tabId] === undefined) return;
-		
+
 		if (!tab.url || this.tabs[tabId].kicked || tab.url.indexOf('chrome://') === 0 || this.tabs[tabId].preventFromClosing) {
 			return;
 		}
@@ -113,14 +114,21 @@ var App = {
 		const { kickedUrl, kickedTabIndex, kickedTabWindowId } = options;
 		const { replace_hash_for_old_tab, move_tab } = this.options;
 
-		// bring the kept duplicate tab to the closed duplicate tab (where the new tab is opened).
-		if (move_tab) {
-			chrome.tabs.move(tabId, {
-				index: kickedTabIndex,
-				windowId: kickedTabWindowId
-			});
+		// Bin: bring the kept duplicate tab to the closed duplicate tab (where the new tab is opened).
+		// In Edge, there can be more than one "profile" which is different user space.
+		// Tabs can only be moved between windows in the same profile.
+		// But I can find any properties related to `profile` in tab object.
+		// It will always throw an error if the tabs are not in the same profile.
+		try {
+			if (move_tab) {
+				chrome.tabs.move(tabId, {
+					index: kickedTabIndex,
+					windowId: kickedTabWindowId
+				});
+			}
+		} catch (e) {
+			console.error("Moving tab Failed: ", e);
 		}
-
 		// bring the window where the new tab is opened to the front.
 		chrome.windows.update(kickedTabWindowId, {
 			focused: true
