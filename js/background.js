@@ -26,31 +26,37 @@ const App = {
 
 		const pendingUrl = this.tabs[tabId]?.tab?.pendingUrl;
 
-		// Check if the tab is in incognito mode
-		chrome.tabs.get(tabId, (tabInfo) => {
-			if (chrome.runtime.lastError) {
-				console.error(chrome.runtime.lastError);
+		// Check if the current tab is in an incognito window
+		chrome.windows.get(tab.windowId, { populate: false }, (window) => {
+			if (window.incognito) {
+				// Do nothing for incognito windows
 				return;
 			}
 
-			const existedTabs = this.getTabsByUrlInSameWindow(pendingUrl || tab.url, tabInfo.incognito);
-
+			const existedTabs = this.getTabsByUrlInSameWindow(pendingUrl || tab.url);
 			const anotherTabs = existedTabs.filter(existedTab => existedTab.id !== tab.id);
 
 			if (anotherTabs.length) {
-				this.tabs[tabId].kicked = true;
-				this.recentlyClosedTabUrl = tab.url;
-				this.highlightTab(anotherTabs[0].id, {
-					kickedUrl: tab.url,
-					kickedTabIndex: tab.index,
-					kickedTabWindowId: tab.windowId,
-					incognito: tabInfo.incognito
-				});
-				this.closeTab(tabId);
-			}
+				// Check if the existing tab is in an incognito window
+				chrome.windows.get(anotherTabs[0].windowId, { populate: false }, (existingWindow) => {
+					if (existingWindow.incognito) {
+						// Do nothing if the existing tab is in an incognito window
+						return;
+					}
 
-			this.tabs[tabId].tab = tab;
+					this.tabs[tabId].kicked = true;
+					this.recentlyClosedTabUrl = tab.url;
+					this.highlightTab(anotherTabs[0].id, {
+						kickedUrl: tab.url,
+						kickedTabIndex: tab.index,
+						kickedTabWindowId: tab.windowId
+					});
+					this.closeTab(tabId);
+				});
+			}
 		});
+
+		this.tabs[tabId].tab = tab;
 	},
 
 	listenReplaceTab: function (newTabId, oldTabId) {
@@ -75,30 +81,29 @@ const App = {
 	},
 
 	highlightTab: function (tabId, options) {
-		const { kickedUrl, kickedTabIndex, kickedTabWindowId, incognito } = options;
+		const { kickedUrl, kickedTabIndex, kickedTabWindowId } = options;
 		const { replace_hash_for_old_tab, move_tab } = this.options;
 
-		// Only move the tab if it's in the same incognito state
-		if (move_tab) {
-			chrome.tabs.get(tabId, (tab) => {
-				if (tab.incognito === incognito) {
+		chrome.windows.get(kickedTabWindowId, { populate: false }, (kickedWindow) => {
+			chrome.windows.get(this.tabs[tabId].tab.windowId, { populate: false }, (existingWindow) => {
+				if (!kickedWindow.incognito && !existingWindow.incognito && move_tab) {
 					chrome.tabs.move(tabId, {
 						index: kickedTabIndex,
 						windowId: kickedTabWindowId
 					}).catch(e => console.error("Moving tab Failed: ", e));
 				}
+
+				chrome.windows.update(kickedTabWindowId, { focused: true });
+				chrome.tabs.update(tabId, { highlighted: true, active: true });
+
+				if (replace_hash_for_old_tab && kickedUrl) {
+					const url = new URL(kickedUrl);
+					if (url.hash) {
+						chrome.tabs.sendMessage(tabId, { action: "setHash", hash: url.hash });
+					}
+				}
 			});
-		}
-
-		chrome.windows.update(kickedTabWindowId, { focused: true });
-		chrome.tabs.update(tabId, { highlighted: true, active: true });
-
-		if (replace_hash_for_old_tab && kickedUrl) {
-			const url = new URL(kickedUrl);
-			if (url.hash) {
-				chrome.tabs.sendMessage(tabId, { action: "setHash", hash: url.hash });
-			}
-		}
+		});
 	},
 
 	closeTab: function (tabId) {
@@ -118,13 +123,11 @@ const App = {
 		return url1 === url2;
 	},
 
-	getTabsByUrlInSameWindow: function (url, isIncognito) {
+	getTabsByUrlInSameWindow: function (url) {
 		return Object.values(this.tabs)
-			.filter(tab =>
-				this.urlMatch(tab.tab.url, url) &&
-				!tab.kicked &&
-				tab.tab.incognito === isIncognito
-			)
+			.filter(tab => {
+				return this.urlMatch(tab.tab.url, url) && !tab.kicked && !tab.tab.incognito;
+			})
 			.map(tab => tab.tab);
 	}
 };

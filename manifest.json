@@ -31,5 +31,6 @@
   "host_permissions": [
     "http://*/*",
     "https://*/*"
-  ]
+  ],
+  "incognito": "split"
 }
