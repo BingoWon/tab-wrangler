@@ -1,9 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Bin Duplicate Tab Closer",
+  "name": "Tab Wrangler",
   "version": "0.0.9",
-  "description": "__MSG_appDesc__",
-  "default_locale": "en",
+  "description": "Extension prevents duplicate tabs by focusing on already opened tabs in the same window.",
   "action": {
     "default_icon": {
       "16": "images/icon16.png",
@@ -11,7 +10,7 @@
       "128": "images/icon128.png"
     },
     "default_popup": "popup/popup.html",
-    "default_title": "__MSG_appDesc__"
+    "default_title": "Tab Wrangler"
   },
   "background": {
     "service_worker": "js/background.js"
@@ -32,5 +31,5 @@
     "http://*/*",
     "https://*/*"
   ],
-  "incognito": "split"
+  "incognito": "spanning"
 }
