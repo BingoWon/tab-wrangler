@@ -7,35 +7,43 @@
 const TabManager = {
   // 标签页状态存储
   tabs: new Map(),
-  
+
   // 窗口状态存储
   windows: new Map(),
-  
+
   // 模块注册表
   modules: new Map(),
-  
-  // 事件队列
-  eventQueue: [],
-  
-  // 处理中标记
-  processing: false,
 
   /**
    * 初始化管理器
    */
   async initialize() {
     console.log("TabManager: 初始化统一管理系统");
-    
+
     // 清理状态
     this.tabs.clear();
     this.windows.clear();
     this.modules.clear();
-    
-    // 初始化当前状态
+
+    // 先尝试从持久化存储恢复状态
+    await this.loadPersistedState();
+
+    // 然后加载当前状态（合并或补充）
     await this.loadCurrentState();
-    
-    // 设置事件监听
+
+    // 验证初始化是否成功
+    if (this.windows.size === 0) {
+      console.error("TabManager: 初始化失败，没有加载到任何窗口状态");
+      throw new Error("TabManager 初始化失败");
+    }
+
+    // 只有在状态完全加载后才设置事件监听
     this.setupEventListeners();
+
+    // 启动定期保存
+    this.startPeriodicSave();
+
+    console.log("TabManager: 初始化完成，开始监听事件");
   },
 
   /**
@@ -44,38 +52,60 @@ const TabManager = {
   async loadCurrentState() {
     return new Promise((resolve) => {
       chrome.windows.getAll({ populate: true }, (windows) => {
-        windows.forEach(window => {
-          // 存储窗口信息
-          this.windows.set(window.id, {
-            id: window.id,
-            focused: window.focused,
-            activeTabId: null,
-            tabHistory: []
-          });
+        windows.forEach((window) => {
+          // 检查是否已有持久化的窗口状态
+          let windowState = this.windows.get(window.id);
+
+          if (!windowState) {
+            // 创建新的窗口状态
+            windowState = {
+              id: window.id,
+              focused: window.focused,
+              activeTabId: null,
+              tabHistory: [],
+            };
+            this.windows.set(window.id, windowState);
+          } else {
+            // 更新现有状态的基本信息
+            windowState.focused = window.focused;
+          }
 
           // 存储标签页信息
-          window.tabs.forEach(tab => {
+          window.tabs.forEach((tab) => {
             this.tabs.set(tab.id, {
               id: tab.id,
               url: tab.url,
               windowId: tab.windowId,
               active: tab.active,
               index: tab.index,
-              status: tab.status
+              status: tab.status,
             });
 
-            // 设置活动标签页
+            // 更新活动标签页
             if (tab.active) {
-              const windowState = this.windows.get(window.id);
               windowState.activeTabId = tab.id;
-              windowState.tabHistory.unshift(tab.id);
+
+              // 如果历史记录中没有这个标签页，添加到最前面
+              if (!windowState.tabHistory.includes(tab.id)) {
+                windowState.tabHistory.unshift(tab.id);
+              }
             } else {
-              this.windows.get(window.id).tabHistory.push(tab.id);
+              // 如果历史记录中没有这个标签页，添加到末尾
+              if (!windowState.tabHistory.includes(tab.id)) {
+                windowState.tabHistory.push(tab.id);
+              }
             }
           });
+
+          // 清理历史记录中不存在的标签页
+          windowState.tabHistory = windowState.tabHistory.filter((tabId) =>
+            window.tabs.some((tab) => tab.id === tabId)
+          );
         });
-        
-        console.log(`TabManager: 加载了 ${this.tabs.size} 个标签页，${this.windows.size} 个窗口`);
+
+        console.log(
+          `TabManager: 加载了 ${this.tabs.size} 个标签页，${this.windows.size} 个窗口`
+        );
         resolve();
       });
     });
@@ -105,20 +135,37 @@ const TabManager = {
    * 分发事件到所有注册的模块
    */
   async dispatchEvent(eventType, data) {
+    console.log(`📡 TabManager: 分发事件 ${eventType}`);
+
     // 按优先级排序模块
-    const sortedModules = Array.from(this.modules.entries())
-      .sort(([,a], [,b]) => b.priority - a.priority);
+    const sortedModules = Array.from(this.modules.entries()).sort(
+      ([, a], [, b]) => b.priority - a.priority
+    );
+
+    console.log(
+      `📡 TabManager: 已注册模块:`,
+      sortedModules.map(([name, { priority }]) => `${name}(${priority})`)
+    );
 
     for (const [name, { module }] of sortedModules) {
       try {
         const handler = module[eventType];
-        if (typeof handler === 'function') {
+        if (typeof handler === "function") {
+          console.log(`📡 TabManager: 调用模块 ${name} 的 ${eventType} 处理器`);
           await handler.call(module, data);
+          console.log(`📡 TabManager: 模块 ${name} 处理完成`);
+        } else {
+          console.log(`📡 TabManager: 模块 ${name} 没有 ${eventType} 处理器`);
         }
       } catch (error) {
-        console.error(`TabManager: 模块 ${name} 处理事件 ${eventType} 时出错:`, error);
+        console.error(
+          `TabManager: 模块 ${name} 处理事件 ${eventType} 时出错:`,
+          error
+        );
       }
     }
+
+    console.log(`📡 TabManager: 事件 ${eventType} 分发完成`);
   },
 
   /**
@@ -131,7 +178,7 @@ const TabManager = {
       windowId: tab.windowId,
       active: tab.active,
       index: tab.index,
-      status: tab.status
+      status: tab.status,
     });
 
     // 更新窗口状态
@@ -145,7 +192,10 @@ const TabManager = {
       }
     }
 
-    this.dispatchEvent('onTabCreated', { tab, tabState: this.tabs.get(tab.id) });
+    this.dispatchEvent("onTabCreated", {
+      tab,
+      tabState: this.tabs.get(tab.id),
+    });
   },
 
   /**
@@ -158,15 +208,15 @@ const TabManager = {
       Object.assign(tabState, {
         url: tab.url,
         status: tab.status,
-        index: tab.index
+        index: tab.index,
       });
     }
 
-    this.dispatchEvent('onTabUpdated', { 
-      tabId, 
-      changeInfo, 
-      tab, 
-      tabState: this.tabs.get(tabId) 
+    this.dispatchEvent("onTabUpdated", {
+      tabId,
+      changeInfo,
+      tab,
+      tabState: this.tabs.get(tabId),
     });
   },
 
@@ -175,27 +225,79 @@ const TabManager = {
    */
   handleTabActivated(activeInfo) {
     const { tabId, windowId } = activeInfo;
-    const windowState = this.windows.get(windowId);
-    
-    if (windowState) {
-      const previousActiveTabId = windowState.activeTabId;
-      windowState.activeTabId = tabId;
-      
-      // 更新历史记录
-      windowState.tabHistory = windowState.tabHistory.filter(id => id !== tabId);
-      windowState.tabHistory.unshift(tabId);
-      
-      if (previousActiveTabId && previousActiveTabId !== tabId) {
-        windowState.tabHistory = windowState.tabHistory.filter(id => id !== previousActiveTabId);
-        windowState.tabHistory.splice(1, 0, previousActiveTabId);
-      }
+    let windowState = this.windows.get(windowId);
+
+    console.log(
+      `⚡ TabManager: 处理标签页激活事件 - 标签页: ${tabId}, 窗口: ${windowId}`
+    );
+    console.log(`⚡ TabManager: 窗口状态存在: ${!!windowState}`);
+
+    // 如果窗口状态不存在，创建一个新的状态
+    if (!windowState) {
+      console.warn(
+        `⚡ TabManager: 窗口状态不存在，创建新状态 - 窗口ID: ${windowId}`
+      );
+      windowState = {
+        id: windowId,
+        focused: true,
+        activeTabId: null,
+        tabHistory: [],
+      };
+      this.windows.set(windowId, windowState);
     }
 
-    this.dispatchEvent('onTabActivated', { 
-      activeInfo, 
-      windowState: this.windows.get(windowId),
-      tabState: this.tabs.get(tabId)
+    const previousActiveTabId = windowState.activeTabId;
+    windowState.activeTabId = tabId;
+
+    console.log(
+      `⚡ TabManager: 上一个活动标签页: ${previousActiveTabId}, 新活动标签页: ${tabId}`
+    );
+
+    // 更新历史记录
+    windowState.tabHistory = windowState.tabHistory.filter(
+      (id) => id !== tabId
+    );
+    windowState.tabHistory.unshift(tabId);
+
+    if (previousActiveTabId && previousActiveTabId !== tabId) {
+      windowState.tabHistory = windowState.tabHistory.filter(
+        (id) => id !== previousActiveTabId
+      );
+      windowState.tabHistory.splice(1, 0, previousActiveTabId);
+    }
+
+    console.log(`⚡ TabManager: 更新后的历史记录:`, windowState.tabHistory);
+
+    // 确保标签页状态也存在
+    let tabState = this.tabs.get(tabId);
+    if (!tabState) {
+      console.warn(
+        `⚡ TabManager: 标签页状态不存在，获取标签页信息 - 标签页ID: ${tabId}`
+      );
+      // 异步获取标签页信息
+      chrome.tabs.get(tabId, (tab) => {
+        if (!chrome.runtime.lastError && tab) {
+          this.tabs.set(tabId, {
+            id: tab.id,
+            url: tab.url,
+            windowId: tab.windowId,
+            active: tab.active,
+            index: tab.index,
+            status: tab.status,
+          });
+          console.log(`⚡ TabManager: 标签页状态已创建:`, this.tabs.get(tabId));
+        }
+      });
+    }
+
+    this.dispatchEvent("onTabActivated", {
+      activeInfo,
+      windowState,
+      tabState: this.tabs.get(tabId),
     });
+
+    // 立即保存状态变化
+    this.saveState();
   },
 
   /**
@@ -204,28 +306,57 @@ const TabManager = {
   handleTabRemoved(tabId, removeInfo) {
     const { windowId, isWindowClosing } = removeInfo;
     const tabState = this.tabs.get(tabId);
-    
-    // 从状态中移除
+    const windowState = this.windows.get(windowId);
+
+    console.log(`🔥 TabManager: 标签页 ${tabId} 被关闭`);
+    console.log(
+      `🔥 TabManager: 窗口ID: ${windowId}, 是否窗口关闭: ${isWindowClosing}`
+    );
+    console.log(`🔥 TabManager: 窗口状态存在: ${!!windowState}`);
+
+    if (windowState) {
+      console.log(`🔥 TabManager: 当前活动标签页: ${windowState.activeTabId}`);
+      console.log(`🔥 TabManager: 当前历史记录:`, windowState.tabHistory);
+      console.log(
+        `🔥 TabManager: 是否是活动标签页被关闭: ${
+          windowState.activeTabId === tabId
+        }`
+      );
+    }
+
+    // 先分发事件给模块处理（特别是 BackToLastTab）
+    // 这时历史记录还是完整的，模块可以正确处理
+    console.log(`🔥 TabManager: 分发 onTabRemoved 事件给模块`);
+    this.dispatchEvent("onTabRemoved", {
+      tabId,
+      removeInfo,
+      tabState,
+      windowState,
+    });
+
+    // 然后才清理状态
+    console.log(`🔥 TabManager: 从状态中删除标签页 ${tabId}`);
     this.tabs.delete(tabId);
-    
-    if (!isWindowClosing) {
-      const windowState = this.windows.get(windowId);
-      if (windowState) {
-        windowState.tabHistory = windowState.tabHistory.filter(id => id !== tabId);
-        
-        // 如果关闭的是活动标签页，更新活动标签页
-        if (windowState.activeTabId === tabId) {
-          windowState.activeTabId = windowState.tabHistory[0] || null;
-        }
+
+    if (!isWindowClosing && windowState) {
+      console.log(`🔥 TabManager: 清理历史记录，移除 ${tabId}`);
+      const oldHistory = [...windowState.tabHistory];
+      windowState.tabHistory = windowState.tabHistory.filter(
+        (id) => id !== tabId
+      );
+      console.log(
+        `🔥 TabManager: 历史记录更新: ${oldHistory} -> ${windowState.tabHistory}`
+      );
+
+      // 如果关闭的是活动标签页，清空 activeTabId
+      // 让 BackToLastTab 模块负责激活下一个标签页
+      if (windowState.activeTabId === tabId) {
+        console.log(`🔥 TabManager: 清空活动标签页ID，让 BackToLastTab 处理`);
+        windowState.activeTabId = null;
       }
     }
 
-    this.dispatchEvent('onTabRemoved', { 
-      tabId, 
-      removeInfo, 
-      tabState,
-      windowState: this.windows.get(windowId)
-    });
+    console.log(`🔥 TabManager: handleTabRemoved 完成`);
   },
 
   /**
@@ -234,7 +365,7 @@ const TabManager = {
   handleTabReplaced(addedTabId, removedTabId) {
     const oldTabState = this.tabs.get(removedTabId);
     this.tabs.delete(removedTabId);
-    
+
     // 获取新标签页信息
     chrome.tabs.get(addedTabId, (tab) => {
       if (!chrome.runtime.lastError) {
@@ -244,14 +375,14 @@ const TabManager = {
           windowId: tab.windowId,
           active: tab.active,
           index: tab.index,
-          status: tab.status
+          status: tab.status,
         });
 
-        this.dispatchEvent('onTabReplaced', { 
-          addedTabId, 
-          removedTabId, 
+        this.dispatchEvent("onTabReplaced", {
+          addedTabId,
+          removedTabId,
           oldTabState,
-          newTabState: this.tabs.get(addedTabId)
+          newTabState: this.tabs.get(addedTabId),
         });
       }
     });
@@ -267,11 +398,11 @@ const TabManager = {
         this.tabs.delete(tabId);
       }
     }
-    
+
     const windowState = this.windows.get(windowId);
     this.windows.delete(windowId);
 
-    this.dispatchEvent('onWindowRemoved', { windowId, windowState });
+    this.dispatchEvent("onWindowRemoved", { windowId, windowState });
   },
 
   /**
@@ -279,8 +410,11 @@ const TabManager = {
    */
   getTabsByUrl(url, windowId) {
     const tabs = [];
-    for (const [tabId, tabState] of this.tabs) {
-      if (tabState.url === url && (!windowId || tabState.windowId === windowId)) {
+    for (const [, tabState] of this.tabs) {
+      if (
+        tabState.url === url &&
+        (!windowId || tabState.windowId === windowId)
+      ) {
         tabs.push(tabState);
       }
     }
@@ -293,7 +427,90 @@ const TabManager = {
   getTabHistory(windowId) {
     const windowState = this.windows.get(windowId);
     return windowState ? windowState.tabHistory : [];
-  }
+  },
+
+  /**
+   * 从持久化存储加载状态
+   */
+  async loadPersistedState() {
+    try {
+      const result = await chrome.storage.local.get([
+        "windowStates",
+        "lastSaved",
+      ]);
+      const windowStates = result.windowStates || {};
+      const lastSaved = result.lastSaved || 0;
+
+      // 检查数据是否过期（1小时）
+      const isStale = Date.now() - lastSaved > 3600000;
+
+      if (!isStale && Object.keys(windowStates).length > 0) {
+        console.log("📦 TabManager: 从持久化存储恢复状态");
+
+        for (const [windowId, state] of Object.entries(windowStates)) {
+          this.windows.set(parseInt(windowId), {
+            id: parseInt(windowId),
+            focused: state.focused || false,
+            activeTabId: state.activeTabId || null,
+            tabHistory: state.tabHistory || [],
+          });
+        }
+
+        console.log(
+          `📦 TabManager: 恢复了 ${
+            Object.keys(windowStates).length
+          } 个窗口的状态`
+        );
+      } else {
+        console.log("📦 TabManager: 没有有效的持久化状态或数据已过期");
+      }
+    } catch (error) {
+      console.error("📦 TabManager: 加载持久化状态时出错:", error);
+    }
+  },
+
+  /**
+   * 保存状态到持久化存储
+   */
+  async saveState() {
+    try {
+      const windowStates = {};
+
+      for (const [windowId, state] of this.windows) {
+        // 只保存有历史记录的窗口
+        if (state.tabHistory && state.tabHistory.length > 0) {
+          windowStates[windowId] = {
+            focused: state.focused,
+            activeTabId: state.activeTabId,
+            tabHistory: state.tabHistory.slice(0, 50), // 限制历史记录长度
+          };
+        }
+      }
+
+      await chrome.storage.local.set({
+        windowStates,
+        lastSaved: Date.now(),
+      });
+
+      console.log(
+        `💾 TabManager: 保存了 ${Object.keys(windowStates).length} 个窗口的状态`
+      );
+    } catch (error) {
+      console.error("💾 TabManager: 保存状态时出错:", error);
+    }
+  },
+
+  /**
+   * 启动定期保存
+   */
+  startPeriodicSave() {
+    // 每30秒保存一次
+    setInterval(() => {
+      this.saveState();
+    }, 30000);
+
+    console.log("⏰ TabManager: 启动定期保存机制");
+  },
 };
 
 // 导出管理器

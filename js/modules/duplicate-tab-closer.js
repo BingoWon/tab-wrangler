@@ -80,24 +80,33 @@ const DuplicateTabCloser = {
    */
   async activateTab(tabId, windowId) {
     return new Promise((resolve) => {
-      // 先聚焦窗口
-      chrome.windows.update(windowId, { focused: true }, () => {
+      // 先验证标签页是否存在
+      chrome.tabs.get(tabId, () => {
         if (chrome.runtime.lastError) {
-          console.error(
-            "DuplicateTabCloser: 聚焦窗口失败",
-            chrome.runtime.lastError.message
-          );
+          console.warn(`DuplicateTabCloser: 标签页 ${tabId} 不存在，跳过激活`);
+          resolve();
+          return;
         }
 
-        // 再激活标签页
-        chrome.tabs.update(tabId, { active: true }, () => {
+        // 先聚焦窗口
+        chrome.windows.update(windowId, { focused: true }, () => {
           if (chrome.runtime.lastError) {
             console.error(
-              "DuplicateTabCloser: 激活标签页失败",
+              "DuplicateTabCloser: 聚焦窗口失败",
               chrome.runtime.lastError.message
             );
           }
-          resolve();
+
+          // 再激活标签页
+          chrome.tabs.update(tabId, { active: true }, () => {
+            if (chrome.runtime.lastError) {
+              console.error(
+                "DuplicateTabCloser: 激活标签页失败",
+                chrome.runtime.lastError.message
+              );
+            }
+            resolve();
+          });
         });
       });
     });
@@ -108,14 +117,23 @@ const DuplicateTabCloser = {
    */
   async closeTab(tabId) {
     return new Promise((resolve) => {
-      chrome.tabs.remove(tabId, () => {
+      // 先验证标签页是否存在
+      chrome.tabs.get(tabId, () => {
         if (chrome.runtime.lastError) {
-          console.error(
-            "DuplicateTabCloser: 关闭标签页失败",
-            chrome.runtime.lastError.message
-          );
+          console.warn(`DuplicateTabCloser: 标签页 ${tabId} 不存在，跳过关闭`);
+          resolve();
+          return;
         }
-        resolve();
+
+        chrome.tabs.remove(tabId, () => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              "DuplicateTabCloser: 关闭标签页失败",
+              chrome.runtime.lastError.message
+            );
+          }
+          resolve();
+        });
       });
     });
   },

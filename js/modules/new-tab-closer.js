@@ -36,11 +36,14 @@ const NewTabCloser = {
    * 处理标签页激活事件
    */
   async onTabActivated({ activeInfo, windowState }) {
-    const { tabId, windowId } = activeInfo;
-    
+    const { tabId } = activeInfo;
+
     // 获取上一个活动的标签页ID
-    const previousTabId = this.getPreviousActiveTab(windowState.tabHistory, tabId);
-    
+    const previousTabId = this.getPreviousActiveTab(
+      windowState.tabHistory,
+      tabId
+    );
+
     if (previousTabId && !this.processingTabs.has(previousTabId)) {
       // 延迟检查，避免与其他操作冲突
       setTimeout(() => {
@@ -88,16 +91,28 @@ const NewTabCloser = {
    */
   async closeTab(tabId) {
     return new Promise((resolve) => {
-      chrome.tabs.remove(tabId, () => {
+      // 先验证标签页是否存在
+      chrome.tabs.get(tabId, () => {
         if (chrome.runtime.lastError) {
-          // 如果是拖动错误，稍后重试
-          if (chrome.runtime.lastError.message.includes('dragging')) {
-            setTimeout(() => this.closeTab(tabId), 500);
-          } else {
-            console.error("NewTabCloser: 关闭标签页失败", chrome.runtime.lastError.message);
-          }
+          console.warn(`NewTabCloser: 标签页 ${tabId} 不存在，跳过关闭`);
+          resolve();
+          return;
         }
-        resolve();
+
+        chrome.tabs.remove(tabId, () => {
+          if (chrome.runtime.lastError) {
+            // 如果是拖动错误，稍后重试
+            if (chrome.runtime.lastError.message.includes("dragging")) {
+              setTimeout(() => this.closeTab(tabId), 500);
+            } else {
+              console.error(
+                "NewTabCloser: 关闭标签页失败",
+                chrome.runtime.lastError.message
+              );
+            }
+          }
+          resolve();
+        });
       });
     });
   },
