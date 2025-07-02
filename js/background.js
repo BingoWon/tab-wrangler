@@ -11,7 +11,8 @@ try {
     "./tab-manager.js",
     "./modules/duplicate-tab-closer.js",
     "./modules/back-to-last-tab.js",
-    "./modules/new-tab-closer.js"
+    "./modules/new-tab-closer.js",
+    "./modules/tab-position-restorer.js"
   );
   console.log("Tab Wrangler: 所有模块加载成功");
 } catch (e) {
@@ -31,11 +32,11 @@ async function initializeSystem() {
       throw new Error("TabManager 不可用");
     }
 
-    // 初始化功能模块
     const modules = [
       { name: "DuplicateTabCloser", instance: globalThis.DuplicateTabCloser },
       { name: "BackToLastTab", instance: globalThis.BackToLastTab },
       { name: "NewTabCloser", instance: globalThis.NewTabCloser },
+      { name: "TabPositionRestorer", instance: globalThis.TabPositionRestorer },
     ];
 
     for (const { name, instance } of modules) {
