@@ -14,6 +14,9 @@ const TabManager = {
   // 模块注册表
   modules: new Map(),
 
+  // 正在处理的标签页关闭事件，防止重复处理
+  processingRemovals: new Set(),
+
   /**
    * 初始化管理器
    */
@@ -303,60 +306,44 @@ const TabManager = {
   /**
    * 处理标签页关闭事件
    */
-  handleTabRemoved(tabId, removeInfo) {
+  async handleTabRemoved(tabId, removeInfo) {
     const { windowId, isWindowClosing } = removeInfo;
-    const tabState = this.tabs.get(tabId);
-    const windowState = this.windows.get(windowId);
 
-    console.log(`🔥 TabManager: 标签页 ${tabId} 被关闭`);
-    console.log(
-      `🔥 TabManager: 窗口ID: ${windowId}, 是否窗口关闭: ${isWindowClosing}`
-    );
-    console.log(`🔥 TabManager: 窗口状态存在: ${!!windowState}`);
-
-    if (windowState) {
-      console.log(`🔥 TabManager: 当前活动标签页: ${windowState.activeTabId}`);
-      console.log(`🔥 TabManager: 当前历史记录:`, windowState.tabHistory);
-      console.log(
-        `🔥 TabManager: 是否是活动标签页被关闭: ${
-          windowState.activeTabId === tabId
-        }`
-      );
+    // 防止重复处理同一个标签页
+    if (this.processingRemovals.has(tabId)) {
+      console.log(`🔥 TabManager: 标签页 ${tabId} 正在处理中，跳过重复处理`);
+      return;
     }
 
-    // 先分发事件给模块处理（特别是 BackToLastTab）
-    // 这时历史记录还是完整的，模块可以正确处理
-    console.log(`🔥 TabManager: 分发 onTabRemoved 事件给模块`);
-    this.dispatchEvent("onTabRemoved", {
+    this.processingRemovals.add(tabId);
+
+    try {
+      const tabState = this.tabs.get(tabId);
+      const windowState = this.windows.get(windowId);
+
+      console.log(`🔥 TabManager: 标签页 ${tabId} 关闭，活动标签页: ${windowState?.activeTabId}`);
+
+      // 分发事件给模块处理，等待所有模块完成
+    await this.dispatchEvent("onTabRemoved", {
       tabId,
       removeInfo,
       tabState,
       windowState,
     });
 
-    // 然后才清理状态
-    console.log(`🔥 TabManager: 从状态中删除标签页 ${tabId}`);
-    this.tabs.delete(tabId);
+      // 清理状态
+      this.tabs.delete(tabId);
 
-    if (!isWindowClosing && windowState) {
-      console.log(`🔥 TabManager: 清理历史记录，移除 ${tabId}`);
-      const oldHistory = [...windowState.tabHistory];
-      windowState.tabHistory = windowState.tabHistory.filter(
-        (id) => id !== tabId
-      );
-      console.log(
-        `🔥 TabManager: 历史记录更新: ${oldHistory} -> ${windowState.tabHistory}`
-      );
-
-      // 如果关闭的是活动标签页，清空 activeTabId
-      // 让 BackToLastTab 模块负责激活下一个标签页
-      if (windowState.activeTabId === tabId) {
-        console.log(`🔥 TabManager: 清空活动标签页ID，让 BackToLastTab 处理`);
-        windowState.activeTabId = null;
+      if (!isWindowClosing && windowState) {
+        windowState.tabHistory = windowState.tabHistory.filter(id => id !== tabId);
+        if (windowState.activeTabId === tabId) {
+          windowState.activeTabId = null;
+        }
       }
+    } finally {
+      // 清理处理状态
+      this.processingRemovals.delete(tabId);
     }
-
-    console.log(`🔥 TabManager: handleTabRemoved 完成`);
   },
 
   /**
