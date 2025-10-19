@@ -5,6 +5,7 @@
  *
  * 功能模块：
  * - DuplicateTabCloser: 关闭重复标签页
+ * - AutoActivateNewTab: 自动激活新标签页
  * - BackToLastTab: 返回上一个标签页
  * - NewTabCloser: 关闭空白标签页
  *
@@ -16,6 +17,7 @@ try {
   self.importScripts(
     "./tab-manager.js",
     "./modules/duplicate-tab-closer.js",
+    "./modules/auto-activate-new-tab.js",
     "./modules/back-to-last-tab.js",
     "./modules/new-tab-closer.js"
   );
@@ -37,6 +39,7 @@ async function initializeSystem() {
 
     const modules = [
       globalThis.DuplicateTabCloser,
+      globalThis.AutoActivateNewTab,
       globalThis.BackToLastTab,
       globalThis.NewTabCloser,
     ];
