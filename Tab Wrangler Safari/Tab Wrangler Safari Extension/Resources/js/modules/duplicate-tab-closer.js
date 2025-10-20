@@ -21,12 +21,25 @@ const DuplicateTabCloser = {
 
   /**
    * 处理标签页更新事件
+   * 只处理在后台打开的标签页，避免干扰用户正在使用的标签页
    */
   async onTabUpdated({ tabId, changeInfo, tab }) {
+    // 只在 URL 变化或加载完成时检测
     if (!changeInfo.url && changeInfo.status !== "complete") return;
+
+    // 🔑 关键修复：如果标签页是激活状态，说明用户正在使用，不应该关闭
+    if (tab.active) {
+      console.log(`🔄 DuplicateTabCloser: 跳过激活标签页 ${tabId} (用户正在使用)`);
+      return;
+    }
+
+    // 跳过特殊页面
     if (this.isSpecialUrl(tab.url)) return;
+
+    // 检查是否最近关闭过相同 URL
     if (this.isRecentlyClosed(tab.url)) return;
 
+    // 查找重复标签页
     const duplicates = TabManager.getTabsByUrl(tab.url, tab.windowId).filter(
       (tabState) => tabState.id !== tabId
     );
