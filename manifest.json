@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Extension prevents duplicate tabs by focusing on already opened tabs in the same window.",
   "background": {
+    "scripts": ["js/background.js"],
     "service_worker": "js/background.js"
   },
   "icons": {
