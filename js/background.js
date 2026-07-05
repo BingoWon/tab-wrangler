@@ -1,6 +1,7 @@
 "use strict";
 
 const APP_NAME = "Tab Wrangler";
+const DEBUG = true;
 const STORAGE_KEY = "tabWranglerState";
 const MAX_HISTORY_PER_WINDOW = 80;
 const DUPLICATE_GUARD_MS = 1000;
@@ -14,6 +15,7 @@ const SPECIAL_URL_PREFIXES = [
   "moz-extension://",
   "chrome-extension://",
   "safari-extension://",
+  "safari-web-extension://",
   "data:",
   "javascript:",
 ];
@@ -24,6 +26,7 @@ const BLANK_URL_PREFIXES = [
   "chrome://newtab",
   "chrome-search://local-ntp/local-ntp.html",
   "edge://newtab",
+  "favorites://",
 ];
 
 const tabsById = new Map();
@@ -53,6 +56,16 @@ function reportError(context, error) {
   console.error(`${APP_NAME}: ${context}`, error);
 }
 
+function debug(message, data) {
+  if (!DEBUG) return;
+
+  if (data === undefined) {
+    console.info(`${APP_NAME}: ${message}`);
+  } else {
+    console.info(`${APP_NAME}: ${message}`, data);
+  }
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -69,6 +82,21 @@ function normalizeUrl(url) {
 
 function tabUrl(tab) {
   return normalizeUrl(tab?.url || tab?.pendingUrl || "");
+}
+
+function tabSummary(tab) {
+  if (!tab) return null;
+
+  return {
+    id: tab.id,
+    windowId: tab.windowId,
+    index: tab.index,
+    active: tab.active,
+    pinned: tab.pinned,
+    status: tab.status,
+    url: tab.url,
+    pendingUrl: tab.pendingUrl,
+  };
 }
 
 function hasPrefix(url, prefixes) {
@@ -174,6 +202,27 @@ async function queryTabs(queryInfo) {
 }
 
 async function getAllWindows() {
+  if (!chrome.windows?.getAll) {
+    debug("windows.getAll unavailable; falling back to tabs.query");
+
+    const allTabs = await queryTabs({});
+    const windows = new Map();
+
+    for (const tab of allTabs) {
+      if (!windows.has(tab.windowId)) {
+        windows.set(tab.windowId, {
+          id: tab.windowId,
+          focused: Boolean(tab.active),
+          tabs: [],
+        });
+      }
+
+      windows.get(tab.windowId).tabs.push(tab);
+    }
+
+    return Array.from(windows.values());
+  }
+
   return callChrome((callback) =>
     chrome.windows.getAll({ populate: true }, callback)
   );
@@ -200,7 +249,12 @@ async function loadStoredState() {
     const result = await callChrome((callback) =>
       chrome.storage.local.get(STORAGE_KEY, callback)
     );
-    return result[STORAGE_KEY]?.windows || {};
+    const windows = result[STORAGE_KEY]?.windows || {};
+    debug("loaded stored state", {
+      windows: Object.keys(windows).length,
+      savedAt: result[STORAGE_KEY]?.savedAt || null,
+    });
+    return windows;
   } catch (error) {
     reportError("could not load stored tab state", error);
     return {};
@@ -276,6 +330,8 @@ function pruneTransientState() {
 }
 
 async function initializeState() {
+  debug("initializing state");
+
   const [storedWindows, browserWindows] = await Promise.all([
     loadStoredState(),
     getAllWindows(),
@@ -310,11 +366,19 @@ async function initializeState() {
     ]).slice(0, MAX_HISTORY_PER_WINDOW);
   }
 
+  debug("state initialized", {
+    browserWindows: browserWindows.length,
+    storedWindows: Object.keys(storedWindows).length,
+    tabs: tabsById.size,
+    windows: windowsById.size,
+  });
+
   queuePersist();
 }
 
 function readyState(force = false) {
   if (force || !initializationPromise) {
+    debug(force ? "forcing state initialization" : "starting state initialization");
     initializationPromise = initializeState().catch((error) => {
       initializationPromise = null;
       throw error;
@@ -363,12 +427,15 @@ async function syncWindowTabs(windowId) {
 }
 
 async function closeTab(tabId, { recordPosition = true } = {}) {
+  debug("closing tab", { tabId, recordPosition });
+
   if (!recordPosition) {
     internalClosures.add(tabId);
   }
 
   try {
     await removeTab(tabId);
+    debug("closed tab", { tabId, recordPosition });
     setTimeout(() => internalClosures.delete(tabId), ACTIVATION_GRACE_MS * 2);
   } catch (error) {
     internalClosures.delete(tabId);
@@ -380,9 +447,11 @@ async function closeTab(tabId, { recordPosition = true } = {}) {
 }
 
 async function activateTab(tabId) {
+  debug("activating tab", { tabId });
   const tab = await updateTab(tabId, { active: true });
   const snapshot = rememberTab(tab);
   promoteActiveTab(snapshot.windowId, snapshot.id);
+  debug("activated tab", { tab: tabSummary(tab) });
 }
 
 function rememberClosedPosition(tab) {
@@ -399,6 +468,13 @@ function rememberClosedPosition(tab) {
     timestamp: Date.now(),
   });
   recordsByUrl.set(tab.url, records.slice(0, 5));
+
+  debug("recorded closed tab position", {
+    tabId: tab.id,
+    windowId: tab.windowId,
+    index: tab.index,
+    url: tab.url,
+  });
 }
 
 function consumeClosedPosition(windowId, url) {
@@ -423,13 +499,24 @@ function consumeClosedPosition(windowId, url) {
 }
 
 async function maybeRestorePosition(tab) {
-  if (typeof chrome.tabs.move !== "function") return;
-
   const url = tabUrl(tab);
   if (isSpecialUrl(url) || isBlankUrl(url)) return;
 
   const recordsByUrl = closedTabPositions.get(tab.windowId);
   if (!recordsByUrl?.has(url)) return;
+
+  if (typeof chrome.tabs.move !== "function") {
+    debug("restore-position skipped: tabs.move unavailable", {
+      tab: tabSummary(tab),
+      url,
+    });
+    return;
+  }
+
+  debug("restore-position candidate found", {
+    tab: tabSummary(tab),
+    url,
+  });
 
   await delay(100);
 
@@ -442,18 +529,36 @@ async function maybeRestorePosition(tab) {
   }
 
   const currentTab = browserTabs.find((candidate) => candidate.id === tab.id);
-  if (!currentTab || currentTab.index !== browserTabs.length - 1) return;
+  if (!currentTab || currentTab.index !== browserTabs.length - 1) {
+    debug("restore-position skipped: tab is not at window end", {
+      tabId: tab.id,
+      currentIndex: currentTab?.index ?? null,
+      tabCount: browserTabs.length,
+    });
+    return;
+  }
 
   const record = consumeClosedPosition(tab.windowId, url);
   if (!record) return;
 
   const targetIndex = Math.min(record.index, browserTabs.length - 1);
-  if (targetIndex === currentTab.index) return;
+  if (targetIndex === currentTab.index) {
+    debug("restore-position skipped: already at target index", {
+      tabId: tab.id,
+      targetIndex,
+    });
+    return;
+  }
 
   try {
     const moved = await moveTab(tab.id, { index: targetIndex });
     rememberTab(Array.isArray(moved) ? moved[0] : moved);
     await syncWindowTabs(tab.windowId);
+    debug("restored tab position", {
+      tabId: tab.id,
+      fromIndex: currentTab.index,
+      toIndex: targetIndex,
+    });
   } catch (error) {
     reportError(`could not restore tab ${tab.id} position`, error);
   }
@@ -493,15 +598,32 @@ async function maybeCloseDuplicate(tab) {
   if (!original) return;
 
   const isFreshTab = Date.now() - current.createdAt < 3000;
-  if (current.active && !isFreshTab) return;
+  if (current.active && !isFreshTab) {
+    debug("duplicate skipped: active tab is not fresh", {
+      current,
+      original,
+    });
+    return;
+  }
 
   recentlyClosedDuplicates.set(current.url, Date.now());
+
+  debug("duplicate found", {
+    duplicate: current,
+    original,
+    isFreshTab,
+  });
 
   if (current.active && !original.active) {
     await activateTab(original.id);
   }
 
   await closeTab(current.id, { recordPosition: false });
+  debug("duplicate closed", {
+    duplicateTabId: current.id,
+    originalTabId: original.id,
+    url: current.url,
+  });
 }
 
 async function closeBlankTabIfUnused(tabId) {
@@ -515,15 +637,36 @@ async function closeBlankTabIfUnused(tabId) {
   }
 
   const snapshot = rememberTab(tab);
-  if (snapshot.active || snapshot.pinned || !isBlankUrl(snapshot.url)) return;
+  if (snapshot.active || snapshot.pinned || !isBlankUrl(snapshot.url)) {
+    debug("blank cleanup skipped", {
+      tabId,
+      active: snapshot.active,
+      pinned: snapshot.pinned,
+      url: snapshot.url,
+    });
+    return;
+  }
 
   const siblingTabs = await queryTabs({ windowId: snapshot.windowId });
-  if (siblingTabs.length <= 1) return;
+  if (siblingTabs.length <= 1) {
+    debug("blank cleanup skipped: last tab in window", {
+      tabId,
+      windowId: snapshot.windowId,
+    });
+    return;
+  }
 
   await closeTab(snapshot.id, { recordPosition: false });
+  debug("blank tab closed", {
+    tabId: snapshot.id,
+    windowId: snapshot.windowId,
+    url: snapshot.url,
+  });
 }
 
 function scheduleBlankTabCleanup(tabId) {
+  debug("blank cleanup scheduled", { tabId });
+
   setTimeout(() => {
     void closeBlankTabIfUnused(tabId).catch((error) =>
       reportError(`could not clean blank tab ${tabId}`, error)
@@ -532,6 +675,7 @@ function scheduleBlankTabCleanup(tabId) {
 }
 
 async function handleTabCreated(tab) {
+  debug("event tabs.onCreated", { tab: tabSummary(tab) });
   rememberTab(tab);
   await maybeRestorePosition(tab);
   await maybeCloseDuplicate(tab);
@@ -539,6 +683,12 @@ async function handleTabCreated(tab) {
 }
 
 async function handleTabUpdated(tabId, changeInfo, tab) {
+  debug("event tabs.onUpdated", {
+    tabId,
+    changeInfo,
+    tab: tabSummary(tab),
+  });
+
   rememberTab(tab);
 
   if (changeInfo.url || changeInfo.status === "complete") {
@@ -550,6 +700,8 @@ async function handleTabUpdated(tabId, changeInfo, tab) {
 }
 
 async function handleTabActivated({ tabId, windowId }) {
+  debug("event tabs.onActivated", { tabId, windowId });
+
   const windowState = ensureWindow(windowId);
   const previousTabId = windowState.activeTabId;
   const previousHistory = [...windowState.history];
@@ -594,6 +746,15 @@ async function handleTabRemoved(tabId, removeInfo) {
     Boolean(tab?.active) ||
     wasJustActivatedAway;
 
+  debug("event tabs.onRemoved", {
+    tabId,
+    removeInfo,
+    tab,
+    wasInternal,
+    wasActive,
+    wasJustActivatedAway,
+  });
+
   if (!removeInfo.isWindowClosing && !wasInternal && tab) {
     rememberClosedPosition(tab);
   }
@@ -610,6 +771,10 @@ async function handleTabRemoved(tabId, removeInfo) {
     );
 
     if (nextTabId) {
+      debug("restoring previous active tab", {
+        closedTabId: tabId,
+        nextTabId,
+      });
       await delay(50);
       await activateTab(nextTabId).catch((error) =>
         reportError(`could not restore last active tab ${nextTabId}`, error)
@@ -621,6 +786,8 @@ async function handleTabRemoved(tabId, removeInfo) {
 }
 
 async function handleTabMoved(tabId, moveInfo) {
+  debug("event tabs.onMoved", { tabId, moveInfo });
+
   const tab = tabsById.get(tabId);
   if (tab) {
     tab.index = moveInfo.toIndex;
@@ -632,11 +799,14 @@ async function handleTabMoved(tabId, moveInfo) {
 }
 
 function handleTabDetached(tabId, detachInfo) {
+  debug("event tabs.onDetached", { tabId, detachInfo });
   removeTabFromWindow(detachInfo.oldWindowId, tabId);
   queuePersist();
 }
 
 async function handleTabAttached(tabId, attachInfo) {
+  debug("event tabs.onAttached", { tabId, attachInfo });
+
   try {
     rememberTab(await getTab(tabId));
     await syncWindowTabs(attachInfo.newWindowId);
@@ -648,6 +818,8 @@ async function handleTabAttached(tabId, attachInfo) {
 }
 
 async function handleTabReplaced(addedTabId, removedTabId) {
+  debug("event tabs.onReplaced", { addedTabId, removedTabId });
+
   const oldTab = tabsById.get(removedTabId);
   tabsById.delete(removedTabId);
 
@@ -667,6 +839,8 @@ async function handleTabReplaced(addedTabId, removedTabId) {
 }
 
 function handleWindowRemoved(windowId) {
+  debug("event windows.onRemoved", { windowId });
+
   windowsById.delete(windowId);
   recentActivations.delete(windowId);
   closedTabPositions.delete(windowId);
@@ -680,7 +854,28 @@ function handleWindowRemoved(windowId) {
   queuePersist();
 }
 
+debug("service worker loaded", {
+  runtimeId: chrome.runtime.id,
+  version:
+    typeof chrome.runtime.getManifest === "function"
+      ? chrome.runtime.getManifest().version
+      : null,
+  userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+});
+
+debug("api support", {
+  windowsGetAll: typeof chrome.windows?.getAll === "function",
+  windowsOnRemoved: Boolean(chrome.windows?.onRemoved),
+  tabsMove: typeof chrome.tabs.move === "function",
+  tabsOnMoved: Boolean(chrome.tabs.onMoved),
+  tabsOnReplaced: Boolean(chrome.tabs.onReplaced),
+  tabsOnAttached: Boolean(chrome.tabs.onAttached),
+  tabsOnDetached: Boolean(chrome.tabs.onDetached),
+  storageLocal: Boolean(chrome.storage?.local),
+});
+
 chrome.runtime.onInstalled.addListener(() => {
+  debug("event runtime.onInstalled");
   void readyState(true).catch((error) =>
     reportError("could not initialize after install", error)
   );
@@ -688,6 +883,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 if (chrome.runtime.onStartup) {
   chrome.runtime.onStartup.addListener(() => {
+    debug("event runtime.onStartup");
     void readyState(true).catch((error) =>
       reportError("could not initialize on startup", error)
     );
