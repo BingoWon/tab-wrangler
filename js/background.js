@@ -1,7 +1,7 @@
 "use strict";
 
-const APP_NAME = "Tab Deduper";
-const STORAGE_KEY = "tabDeduperState";
+const APP_NAME = "Tab Wrangler";
+const STORAGE_KEY = "tabWranglerState";
 const MAX_HISTORY_PER_WINDOW = 80;
 const DUPLICATE_GUARD_MS = 1000;
 const RESTORE_POSITION_MS = 10000;

@@ -2,7 +2,7 @@ import Cocoa
 import SafariServices
 import WebKit
 
-private let extensionBundleIdentifier = "com.bingowon.tabdeduper.Extension"
+private let extensionBundleIdentifier = "com.bingowon.tabwrangler.Extension"
 
 final class ViewController: NSViewController, WKNavigationDelegate, WKScriptMessageHandler {
 

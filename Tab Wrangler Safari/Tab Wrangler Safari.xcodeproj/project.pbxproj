@@ -28,7 +28,7 @@
 			containerPortal = D718574D2EA4E9EA001349C0 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = D718576F2EA4E9EB001349C0;
-			remoteInfo = "Tab Deduper Extension";
+			remoteInfo = "Tab Wrangler Safari Extension";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -47,7 +47,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		D71857552EA4E9EA001349C0 /* Tab Wrangler Safari.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tab Deduper.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		D71857552EA4E9EA001349C0 /* Tab Wrangler Safari.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tab Wrangler Safari.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		D71857582EA4E9EA001349C0 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		D718575C2EA4E9EA001349C0 /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
 		D718575E2EA4E9EA001349C0 /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
@@ -57,7 +57,7 @@
 		D71857672EA4E9EA001349C0 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		D71857692EA4E9EB001349C0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D718576B2EA4E9EB001349C0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		D71857702EA4E9EB001349C0 /* Tab Wrangler Safari Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Tab Deduper Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		D71857702EA4E9EB001349C0 /* Tab Wrangler Safari Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Tab Wrangler Safari Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		D71857752EA4E9EB001349C0 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
 		D71857772EA4E9EB001349C0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D71857822EA4E9EB001349C0 /* images */ = {isa = PBXFileReference; lastKnownFileType = folder; name = images; path = ../images; sourceTree = SOURCE_ROOT; };
@@ -163,10 +163,10 @@
 			dependencies = (
 				D71857732EA4E9EB001349C0 /* PBXTargetDependency */,
 			);
-			name = "Tab Deduper";
+			name = "Tab Wrangler Safari";
 			packageProductDependencies = (
 			);
-			productName = "Tab Deduper";
+			productName = "Tab Wrangler Safari";
 			productReference = D71857552EA4E9EA001349C0 /* Tab Wrangler Safari.app */;
 			productType = "com.apple.product-type.application";
 		};
@@ -182,10 +182,10 @@
 			);
 			dependencies = (
 			);
-			name = "Tab Deduper Extension";
+			name = "Tab Wrangler Safari Extension";
 			packageProductDependencies = (
 			);
-			productName = "Tab Deduper Extension";
+			productName = "Tab Wrangler Safari Extension";
 			productReference = D71857702EA4E9EB001349C0 /* Tab Wrangler Safari Extension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
@@ -430,7 +430,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Tab Wrangler Safari Extension/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Tab Deduper Extension";
+				INFOPLIST_KEY_CFBundleDisplayName = "Tab Wrangler Safari Extension";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -443,8 +443,8 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.bingowon.tabdeduper.Extension;
-				PRODUCT_NAME = "Tab Deduper Extension";
+				PRODUCT_BUNDLE_IDENTIFIER = com.bingowon.tabwrangler.Extension;
+				PRODUCT_NAME = "Tab Wrangler Safari Extension";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -465,7 +465,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Tab Wrangler Safari Extension/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Tab Deduper Extension";
+				INFOPLIST_KEY_CFBundleDisplayName = "Tab Wrangler Safari Extension";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -478,8 +478,8 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.bingowon.tabdeduper.Extension;
-				PRODUCT_NAME = "Tab Deduper Extension";
+				PRODUCT_BUNDLE_IDENTIFIER = com.bingowon.tabwrangler.Extension;
+				PRODUCT_NAME = "Tab Wrangler Safari Extension";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -504,7 +504,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Tab Wrangler Safari/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Tab Deduper";
+				INFOPLIST_KEY_CFBundleDisplayName = "Tab Wrangler Safari";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMainStoryboardFile = Main;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
@@ -519,8 +519,8 @@
 					"-framework",
 					WebKit,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.bingowon.tabdeduper;
-				PRODUCT_NAME = "Tab Deduper";
+				PRODUCT_BUNDLE_IDENTIFIER = com.bingowon.tabwrangler;
+				PRODUCT_NAME = "Tab Wrangler Safari";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -545,7 +545,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Tab Wrangler Safari/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Tab Deduper";
+				INFOPLIST_KEY_CFBundleDisplayName = "Tab Wrangler Safari";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMainStoryboardFile = Main;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
@@ -560,8 +560,8 @@
 					"-framework",
 					WebKit,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.bingowon.tabdeduper;
-				PRODUCT_NAME = "Tab Deduper";
+				PRODUCT_BUNDLE_IDENTIFIER = com.bingowon.tabwrangler;
+				PRODUCT_NAME = "Tab Wrangler Safari";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
