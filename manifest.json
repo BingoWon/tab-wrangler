@@ -1,17 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Tab Wrangler",
-  "version": "0.1.0",
-  "description": "Extension prevents duplicate tabs by focusing on already opened tabs in the same window.",
+  "name": "Tab Deduper",
+  "version": "1.0.0",
+  "description": "Keeps one copy of each page per window, closes unused blank tabs, and restores recent tab flow.",
   "background": {
-    "scripts": [
-      "js/tab-manager.js",
-      "js/modules/duplicate-tab-closer.js",
-      "js/modules/back-to-last-tab.js",
-      "js/modules/new-tab-closer.js",
-      "js/modules/tab-position-restorer.js",
-      "js/background.js"
-    ],
     "service_worker": "js/background.js"
   },
   "icons": {
@@ -22,6 +14,5 @@
   "permissions": [
     "tabs",
     "storage"
-  ],
-  "incognito": "spanning"
+  ]
 }

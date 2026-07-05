@@ -1,34 +1,32 @@
-//
-//  ViewController.swift
-//  Tab Wrangler Safari
-//
-//  Created by Bin Wang on 10/19/25.
-//
-
 import Cocoa
 import SafariServices
 import WebKit
 
-let extensionBundleIdentifier = "com.tabwrangler.safari.Extension"
+private let extensionBundleIdentifier = "com.bingowon.tabdeduper.Extension"
 
-class ViewController: NSViewController, WKNavigationDelegate, WKScriptMessageHandler {
+final class ViewController: NSViewController, WKNavigationDelegate, WKScriptMessageHandler {
 
     @IBOutlet var webView: WKWebView!
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        self.webView.navigationDelegate = self
+        webView.navigationDelegate = self
+        webView.configuration.userContentController.add(self, name: "controller")
 
-        self.webView.configuration.userContentController.add(self, name: "controller")
+        guard
+            let htmlURL = Bundle.main.url(forResource: "Main", withExtension: "html"),
+            let resourceURL = Bundle.main.resourceURL
+        else {
+            return
+        }
 
-        self.webView.loadFileURL(Bundle.main.url(forResource: "Main", withExtension: "html")!, allowingReadAccessTo: Bundle.main.resourceURL!)
+        webView.loadFileURL(htmlURL, allowingReadAccessTo: resourceURL)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        SFSafariExtensionManager.getStateOfSafariExtension(withIdentifier: extensionBundleIdentifier) { (state, error) in
+        SFSafariExtensionManager.getStateOfSafariExtension(withIdentifier: extensionBundleIdentifier) { state, error in
             guard let state = state, error == nil else {
-                // Insert code to inform the user that something went wrong.
                 return
             }
 
@@ -43,9 +41,7 @@ class ViewController: NSViewController, WKNavigationDelegate, WKScriptMessageHan
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        if (message.body as! String != "open-preferences") {
-            return;
-        }
+        guard message.body as? String == "open-settings" else { return }
 
         SFSafariApplication.showPreferencesForExtension(withIdentifier: extensionBundleIdentifier) { error in
             DispatchQueue.main.async {
@@ -53,5 +49,4 @@ class ViewController: NSViewController, WKNavigationDelegate, WKScriptMessageHan
             }
         }
     }
-
 }

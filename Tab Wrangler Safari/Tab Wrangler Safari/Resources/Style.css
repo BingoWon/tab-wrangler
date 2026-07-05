@@ -42,4 +42,5 @@ body.state-off :is(.state-on, .state-unknown) {
 
 button {
     font-size: 1em;
+    cursor: pointer;
 }
