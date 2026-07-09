@@ -7,7 +7,7 @@ const MAX_HISTORY_PER_WINDOW = 80;
 const DUPLICATE_GUARD_MS = 1000;
 const RESTORE_POSITION_MS = 10000;
 const ACTIVATION_GRACE_MS = 1200;
-const STARTUP_ACTIVATION_GUARD_MS = 5000;
+const NEW_TAB_ACTIVATION_MS = 5000;
 
 const SPECIAL_URL_PREFIXES = [
   "about:",
@@ -36,11 +36,10 @@ const internalClosures = new Set();
 const recentActivations = new Map();
 const recentlyClosedDuplicates = new Map();
 const closedTabPositions = new Map();
-const tabsPendingActivation = new Set();
+const newTabsPendingActivation = new Set();
 
 let initializationPromise = null;
 let persistQueued = false;
-let initializedAt = 0;
 
 function callChrome(invoker) {
   return new Promise((resolve, reject) => {
@@ -92,7 +91,6 @@ function tabSummary(tab) {
 
   return {
     id: tab.id,
-    openerTabId: tab.openerTabId,
     windowId: tab.windowId,
     index: tab.index,
     active: tab.active,
@@ -344,7 +342,7 @@ async function initializeState() {
   tabsById.clear();
   windowsById.clear();
   recentActivations.clear();
-  tabsPendingActivation.clear();
+  newTabsPendingActivation.clear();
   pruneTransientState();
 
   for (const browserWindow of browserWindows) {
@@ -378,7 +376,6 @@ async function initializeState() {
     windows: windowsById.size,
   });
 
-  initializedAt = Date.now();
   queuePersist();
 }
 
@@ -453,12 +450,6 @@ async function closeTab(tabId, { recordPosition = true } = {}) {
 }
 
 async function activateTab(tabId) {
-  const current = tabsById.get(tabId);
-  if (current?.active) {
-    debug("activation skipped: tab is already active", { tabId });
-    return current;
-  }
-
   debug("activating tab", { tabId });
   const tab = await updateTab(tabId, { active: true });
   const snapshot = rememberTab(tab);
@@ -467,39 +458,29 @@ async function activateTab(tabId) {
   return snapshot;
 }
 
-function shouldTrackNewTabForActivation(tab) {
-  if (typeof tab?.id !== "number" || tab.active) return false;
+async function maybeActivateNewTab(tab) {
+  const current = tabsById.get(tab.id) || rememberTab(tab);
+  if (!current) return null;
+  if (!newTabsPendingActivation.has(current.id)) return current;
 
-  if (typeof tab.openerTabId === "number") return true;
-
-  const startupGuardActive =
-    initializedAt > 0 &&
-    Date.now() - initializedAt < STARTUP_ACTIVATION_GUARD_MS;
-
-  if (startupGuardActive) {
-    debug("new tab activation skipped: startup guard", {
-      tab: tabSummary(tab),
-      guardMs: STARTUP_ACTIVATION_GUARD_MS,
-    });
-    return false;
+  if (current.active || current.pinned) {
+    newTabsPendingActivation.delete(current.id);
+    return current;
   }
 
-  return true;
-}
-
-async function activatePendingNewTab(tab) {
-  const current = tabsById.get(tab.id) || rememberTab(tab);
-  if (!current || !tabsPendingActivation.has(current.id)) return current;
-
-  if (current.active) {
-    tabsPendingActivation.delete(current.id);
+  const age = Date.now() - current.createdAt;
+  if (age > NEW_TAB_ACTIVATION_MS) {
+    newTabsPendingActivation.delete(current.id);
     return current;
   }
 
   if (isSpecialUrl(current.url) || isBlankUrl(current.url)) return current;
 
-  tabsPendingActivation.delete(current.id);
-  debug("activating pending new tab", { tab: current });
+  newTabsPendingActivation.delete(current.id);
+  debug("new tab activation candidate", {
+    tab: current,
+    age,
+  });
 
   try {
     return await activateTab(current.id);
@@ -731,18 +712,19 @@ function scheduleBlankTabCleanup(tabId) {
 
 async function handleTabCreated(tab) {
   debug("event tabs.onCreated", { tab: tabSummary(tab) });
-  const current = rememberTab(tab);
-
-  if (shouldTrackNewTabForActivation(tab)) {
-    tabsPendingActivation.add(tab.id);
-    debug("new tab queued for activation", { tab: tabSummary(tab) });
+  if (typeof tab.id === "number") {
+    newTabsPendingActivation.add(tab.id);
   }
 
-  if (current) {
-    await maybeRestorePosition(current);
-    await maybeCloseDuplicate(current);
+  const current = await maybeActivateNewTab(tab);
+  if (!current) {
+    queuePersist();
+    return;
   }
 
+  tab = current;
+  await maybeRestorePosition(tab);
+  await maybeCloseDuplicate(tab);
   queuePersist();
 }
 
@@ -756,9 +738,9 @@ async function handleTabUpdated(tabId, changeInfo, tab) {
   rememberTab(tab);
 
   if (changeInfo.url || changeInfo.status === "complete") {
-    const current = await activatePendingNewTab(tab);
-    await maybeRestorePosition(current);
-    await maybeCloseDuplicate(current);
+    tab = await maybeActivateNewTab(tab);
+    await maybeRestorePosition(tab);
+    await maybeCloseDuplicate(tab);
   }
 
   queuePersist();
@@ -788,7 +770,6 @@ async function handleTabActivated({ tabId, windowId }) {
 
   try {
     rememberTab(await getTab(tabId));
-    tabsPendingActivation.delete(tabId);
   } catch {
     promoteActiveTab(windowId, tabId);
   }
@@ -826,7 +807,7 @@ async function handleTabRemoved(tabId, removeInfo) {
   }
 
   tabsById.delete(tabId);
-  tabsPendingActivation.delete(tabId);
+  newTabsPendingActivation.delete(tabId);
 
   if (windowId) {
     removeTabFromWindow(windowId, tabId);
@@ -888,10 +869,10 @@ async function handleTabReplaced(addedTabId, removedTabId) {
   debug("event tabs.onReplaced", { addedTabId, removedTabId });
 
   const oldTab = tabsById.get(removedTabId);
-  const shouldActivateReplacement = tabsPendingActivation.delete(removedTabId);
+  const shouldActivateNewTab = newTabsPendingActivation.delete(removedTabId);
   tabsById.delete(removedTabId);
-  if (shouldActivateReplacement) {
-    tabsPendingActivation.add(addedTabId);
+  if (shouldActivateNewTab) {
+    newTabsPendingActivation.add(addedTabId);
   }
 
   if (oldTab) {
@@ -901,7 +882,7 @@ async function handleTabReplaced(addedTabId, removedTabId) {
   try {
     const tab = await getTab(addedTabId);
     rememberTab(tab);
-    await maybeCloseDuplicate(tab);
+    await maybeCloseDuplicate(await maybeActivateNewTab(tab));
   } catch (error) {
     reportError(`could not replace tab ${removedTabId}`, error);
   }
@@ -919,7 +900,7 @@ function handleWindowRemoved(windowId) {
   for (const [tabId, tab] of tabsById) {
     if (tab.windowId === windowId) {
       tabsById.delete(tabId);
-      tabsPendingActivation.delete(tabId);
+      newTabsPendingActivation.delete(tabId);
     }
   }
 
