@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Tab Wrangler",
   "version": "1.0.0",
-  "description": "Activates new pages, keeps one copy of each page per window, closes unused blanks, and restores recent tab flow.",
+  "description": "Activates new tabs, keeps one copy of each page per window, closes unused blanks, and restores recent tab flow.",
   "background": {
     "service_worker": "js/background.js"
   },
