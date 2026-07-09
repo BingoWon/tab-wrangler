@@ -447,6 +447,12 @@ async function closeTab(tabId, { recordPosition = true } = {}) {
 }
 
 async function activateTab(tabId) {
+  const current = tabsById.get(tabId);
+  if (current?.active) {
+    debug("activation skipped: tab is already active", { tabId });
+    return current;
+  }
+
   debug("activating tab", { tabId });
   const tab = await updateTab(tabId, { active: true });
   const snapshot = rememberTab(tab);
@@ -679,7 +685,7 @@ async function handleTabCreated(tab) {
   debug("event tabs.onCreated", { tab: tabSummary(tab) });
   let current = rememberTab(tab);
 
-  if (typeof tab.id === "number") {
+  if (typeof tab.id === "number" && !current?.active) {
     try {
       current = await activateTab(tab.id);
     } catch (error) {
