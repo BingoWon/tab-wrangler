@@ -7,6 +7,7 @@ const MAX_HISTORY_PER_WINDOW = 80;
 const DUPLICATE_GUARD_MS = 1000;
 const RESTORE_POSITION_MS = 10000;
 const ACTIVATION_GRACE_MS = 1200;
+const STARTUP_ACTIVATION_GUARD_MS = 5000;
 
 const SPECIAL_URL_PREFIXES = [
   "about:",
@@ -39,6 +40,7 @@ const tabsPendingActivation = new Set();
 
 let initializationPromise = null;
 let persistQueued = false;
+let initializedAt = 0;
 
 function callChrome(invoker) {
   return new Promise((resolve, reject) => {
@@ -376,6 +378,7 @@ async function initializeState() {
     windows: windowsById.size,
   });
 
+  initializedAt = Date.now();
   queuePersist();
 }
 
@@ -465,11 +468,23 @@ async function activateTab(tabId) {
 }
 
 function shouldTrackNewTabForActivation(tab) {
-  return (
-    typeof tab?.id === "number" &&
-    !tab.active &&
-    typeof tab.openerTabId === "number"
-  );
+  if (typeof tab?.id !== "number" || tab.active) return false;
+
+  if (typeof tab.openerTabId === "number") return true;
+
+  const startupGuardActive =
+    initializedAt > 0 &&
+    Date.now() - initializedAt < STARTUP_ACTIVATION_GUARD_MS;
+
+  if (startupGuardActive) {
+    debug("new tab activation skipped: startup guard", {
+      tab: tabSummary(tab),
+      guardMs: STARTUP_ACTIVATION_GUARD_MS,
+    });
+    return false;
+  }
+
+  return true;
 }
 
 async function activatePendingNewTab(tab) {
