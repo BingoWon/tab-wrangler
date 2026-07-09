@@ -7,7 +7,6 @@ const MAX_HISTORY_PER_WINDOW = 80;
 const DUPLICATE_GUARD_MS = 1000;
 const RESTORE_POSITION_MS = 10000;
 const ACTIVATION_GRACE_MS = 1200;
-const NEW_TAB_ACTIVATION_MS = 5000;
 
 const SPECIAL_URL_PREFIXES = [
   "about:",
@@ -468,15 +467,10 @@ async function maybeActivateNewTab(tab) {
     return current;
   }
 
-  const age = Date.now() - current.createdAt;
-  if (age > NEW_TAB_ACTIVATION_MS) {
-    newTabsPendingActivation.delete(current.id);
-    return current;
-  }
-
   if (isSpecialUrl(current.url) || isBlankUrl(current.url)) return current;
 
   newTabsPendingActivation.delete(current.id);
+  const age = Date.now() - current.createdAt;
   debug("new tab activation candidate", {
     tab: current,
     age,
