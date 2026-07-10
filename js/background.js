@@ -467,8 +467,6 @@ async function maybeActivateNewTab(tab) {
     return current;
   }
 
-  if (isSpecialUrl(current.url) || isBlankUrl(current.url)) return current;
-
   newTabsPendingActivation.delete(current.id);
   const age = Date.now() - current.createdAt;
   debug("new tab activation candidate", {
