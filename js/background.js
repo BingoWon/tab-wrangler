@@ -36,6 +36,7 @@ const recentActivations = new Map();
 const recentlyClosedDuplicates = new Map();
 const closedTabPositions = new Map();
 const newTabsPendingActivation = new Set();
+const newTabsPendingDuplicateCheck = new Set();
 
 let initializationPromise = null;
 let persistQueued = false;
@@ -342,6 +343,7 @@ async function initializeState() {
   windowsById.clear();
   recentActivations.clear();
   newTabsPendingActivation.clear();
+  newTabsPendingDuplicateCheck.clear();
   pruneTransientState();
 
   for (const browserWindow of browserWindows) {
@@ -617,31 +619,33 @@ function findOriginalTab(current) {
 }
 
 async function maybeCloseDuplicate(tab) {
+  if (!tab || typeof tab.id !== "number") return;
+  if (!newTabsPendingDuplicateCheck.has(tab.id)) return;
+
   const current = tabsById.get(tab.id) || rememberTab(tab);
   if (!current?.url || isSpecialUrl(current.url) || isBlankUrl(current.url)) {
     return;
   }
 
-  if (current.pinned || isDuplicateGuarded(current.url)) return;
-
-  const original = findOriginalTab(current);
-  if (!original) return;
-
-  const isFreshTab = Date.now() - current.createdAt < 3000;
-  if (current.active && !isFreshTab) {
-    debug("duplicate skipped: active tab is not fresh", {
-      current,
-      original,
-    });
+  if (current.pinned || isDuplicateGuarded(current.url)) {
+    newTabsPendingDuplicateCheck.delete(current.id);
     return;
   }
 
+  const original = findOriginalTab(current);
+  if (!original) {
+    if (current.status === "complete" || Date.now() - current.createdAt > 15000) {
+      newTabsPendingDuplicateCheck.delete(current.id);
+    }
+    return;
+  }
+
+  newTabsPendingDuplicateCheck.delete(current.id);
   recentlyClosedDuplicates.set(current.url, Date.now());
 
   debug("duplicate found", {
     duplicate: current,
     original,
-    isFreshTab,
   });
 
   if (current.active && !original.active) {
@@ -708,6 +712,7 @@ async function handleTabCreated(tab) {
   debug("event tabs.onCreated", { tab: tabSummary(tab) });
   if (typeof tab.id === "number") {
     newTabsPendingActivation.add(tab.id);
+    newTabsPendingDuplicateCheck.add(tab.id);
   }
 
   const current = await maybeActivateNewTab(tab);
@@ -802,6 +807,7 @@ async function handleTabRemoved(tabId, removeInfo) {
 
   tabsById.delete(tabId);
   newTabsPendingActivation.delete(tabId);
+  newTabsPendingDuplicateCheck.delete(tabId);
 
   if (windowId) {
     removeTabFromWindow(windowId, tabId);
@@ -864,9 +870,13 @@ async function handleTabReplaced(addedTabId, removedTabId) {
 
   const oldTab = tabsById.get(removedTabId);
   const shouldActivateNewTab = newTabsPendingActivation.delete(removedTabId);
+  const shouldCheckDuplicate = newTabsPendingDuplicateCheck.delete(removedTabId);
   tabsById.delete(removedTabId);
   if (shouldActivateNewTab) {
     newTabsPendingActivation.add(addedTabId);
+  }
+  if (shouldCheckDuplicate) {
+    newTabsPendingDuplicateCheck.add(addedTabId);
   }
 
   if (oldTab) {
@@ -895,6 +905,7 @@ function handleWindowRemoved(windowId) {
     if (tab.windowId === windowId) {
       tabsById.delete(tabId);
       newTabsPendingActivation.delete(tabId);
+      newTabsPendingDuplicateCheck.delete(tabId);
     }
   }
 
